@@ -4,18 +4,20 @@ const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 8080;
 const server = new WebSocket.Server({ port: PORT });
-const clients = new Map(); // Stores clientId -> WebSocket connection
+
+// Map of userName -> WebSocket connection
+const clients = new Map();
 
 function broadcastUserList() {
   const userList = Array.from(clients.keys());
   const message = JSON.stringify({ type: 'userList', users: userList });
   
-  clients.forEach((clientWs, clientId) => {
+  clients.forEach((clientWs, userName) => {
     if (clientWs.readyState === WebSocket.OPEN) {
       try {
         clientWs.send(message);
       } catch (error) {
-        console.error(`Failed to send message to client ${clientId}:`, error);
+        console.error(`Failed to send message to client ${userName}:`, error);
       }
     }
   });
@@ -23,42 +25,65 @@ function broadcastUserList() {
 }
 
 server.on('connection', (ws) => {
-  const clientId = uuidv4();
-  clients.set(clientId, ws);
-  console.log(`Client ${clientId} connected. Total clients: ${clients.size}`);
+  let registeredUserName = null;
 
-  // Send unique ID to the newly connected client
-  try {
-    ws.send(JSON.stringify({ type: 'yourId', id: clientId }));
-  } catch (error) {
-    console.error(`Failed to send ID to client ${clientId}:`, error);
-  }
-
-  // Broadcast updated user list
-  broadcastUserList();
+  console.log(`New client connected. Total clients: ${clients.size}`);
 
   ws.on('message', (message) => {
-    // This application doesn't process incoming messages from clients,
-    // but you could handle them here if needed.
-    // console.log(`Received message from ${clientId}: ${message}`);
-    // For example, to echo message back:
-    // ws.send(`Server received from ${clientId}: ${message}`);
+    try {
+      const data = JSON.parse(message);
+
+      if (data.type === 'register' && typeof data.name === 'string') {
+        // Register user with name
+        registeredUserName = data.name;
+
+        // If userName already exists, append a suffix to make unique
+        let uniqueName = registeredUserName;
+        let suffix = 1;
+        while (clients.has(uniqueName)) {
+          uniqueName = `${registeredUserName}-${suffix}`;
+          suffix++;
+        }
+        registeredUserName = uniqueName;
+
+        clients.set(registeredUserName, ws);
+        console.log(`User registered: ${registeredUserName}. Total clients: ${clients.size}`);
+
+        // Send registered confirmation with userId (userName)
+        ws.send(JSON.stringify({ type: 'registered', userId: registeredUserName }));
+
+        // Broadcast updated user list
+        broadcastUserList();
+      } else if (data.type === 'chatMessage') {
+        console.log(`Received chatMessage from ${data.sender} to ${data.receiver}: ${data.message}`);
+        // Forward chat message to receiver if connected
+        const receiverWs = clients.get(data.receiver);
+        if (receiverWs && receiverWs.readyState === WebSocket.OPEN) {
+          receiverWs.send(JSON.stringify(data));
+          console.log(`Forwarded chatMessage to ${data.receiver}`);
+        } else {
+          console.log(`Receiver ${data.receiver} not connected or not open`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to process message:', error);
+    }
   });
 
   ws.on('close', () => {
-    clients.delete(clientId);
-    console.log(`Client ${clientId} disconnected. Total clients: ${clients.size}`);
-    // Broadcast updated user list
-    broadcastUserList();
+    if (registeredUserName) {
+      clients.delete(registeredUserName);
+      console.log(`User disconnected: ${registeredUserName}. Total clients: ${clients.size}`);
+      broadcastUserList();
+    }
   });
 
   ws.on('error', (error) => {
-    console.error(`Error on client ${clientId}:`, error);
-    // Ensure client is removed on error as well, if 'close' event doesn't fire
-    if (clients.has(clientId)) {
-        clients.delete(clientId);
-        console.log(`Client ${clientId} removed due to error. Total clients: ${clients.size}`);
-        broadcastUserList();
+    console.error('WebSocket error:', error);
+    if (registeredUserName && clients.has(registeredUserName)) {
+      clients.delete(registeredUserName);
+      console.log(`User removed due to error: ${registeredUserName}. Total clients: ${clients.size}`);
+      broadcastUserList();
     }
   });
 });
