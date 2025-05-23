@@ -9,6 +9,7 @@
     "ws:dev": "node server.js",
     "build": "next build",
     "start": "next start",
+    "start:all": "concurrently -k \\\"npm run dev\\\" \\\"npm run genkit:dev\\\" \\\"npm run ws:dev\\\"",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -64,6 +65,7 @@
     "@types/react-dom": "^18",
     "@types/uuid": "^9.0.8",
     "@types/ws": "^8.5.10",
+    "concurrently": "^9.0.0",
     "genkit-cli": "^1.8.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
