@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Websocket Echo Chamber</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #F0F0F0; /* Very light gray */
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #FFFFFF;
+            padding: 20px 30px 30px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            color: #D0BFFF; /* Soft Lavender */
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 2em;
+        }
+        .info-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ADD8E6; /* Pale blue */
+            border-radius: 6px;
+            background-color: #f9fcff; /* Lighter than pale blue */
+            text-align: left;
+        }
+        .info-section h2 {
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+            border-bottom: 1px solid #ADD8E6; /* Pale blue */
+            padding-bottom: 8px;
+        }
+        #myId {
+            font-weight: bold;
+            color: #8A2BE2; /* Darker Lavender for contrast */
+            word-break: break-all;
+            font-size: 1.1em;
+            padding: 5px 0;
+        }
+        #userList {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 250px; /* Adjust as needed */
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        #userList li {
+            background-color: #FFFFFF;
+            border-bottom: 1px solid #e0e0e0;
+            color: #555;
+            padding: 10px 12px;
+            font-size: 0.95em;
+            word-break: break-all;
+            transition: background-color 0.2s ease;
+        }
+        #userList li:last-child {
+            border-bottom: none;
+        }
+        #userList li:hover {
+            background-color: #E6F7FF; /* Lighter Pale blue on hover */
+        }
+        #userList li.you {
+            background-color: #D0BFFF !important; /* Soft Lavender */
+            color: #FFFFFF !important;
+            font-weight: bold;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            font-style: italic;
+            color: #555;
+            background-color: #e9ecef;
+        }
+        .status.connected {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Websocket Echo Chamber</h1>
+
+        <div class="info-section">
+            <h2>My Unique ID</h2>
+            <p id="myId">Connecting...</p>
+        </div>
+
+        <div class="info-section">
+            <h2>Connected Users (<span id="userCount">0</span>)</h2>
+            <ul id="userList">
+                <li>Waiting for server connection...</li>
+            </ul>
+        </div>
+        <p class="status" id="status">Connecting to ws://localhost:8080...</p>
+    </div>
+
+    <script>
+        const myIdElement = document.getElementById('myId');
+        const userListElement = document.getElementById('userList');
+        const statusElement = document.getElementById('status');
+        const userCountElement = document.getElementById('userCount');
+        let currentMyId = null;
+
+        const socket = new WebSocket('ws://localhost:8080');
+
+        socket.onopen = () => {
+            console.log('Connected to WebSocket server.');
+            statusElement.textContent = 'Successfully connected to WebSocket server!';
+            statusElement.className = 'status connected';
+        };
+
+        socket.onmessage = (event) => {
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch (e) {
+                console.error('Failed to parse message from server:', event.data);
+                return;
+            }
+            
+            console.log('Message from server:', message);
+
+            if (message.type === 'yourId') {
+                currentMyId = message.id;
+                myIdElement.textContent = currentMyId;
+            } else if (message.type === 'userList') {
+                userListElement.innerHTML = ''; // Clear current list
+                userCountElement.textContent = message.users.length;
+
+                if (message.users.length === 0) {
+                    const li = document.createElement('li');
+                    li.textContent = 'No users currently connected.';
+                    userListElement.appendChild(li);
+                } else {
+                    message.users.forEach(userId => {
+                        const li = document.createElement('li');
+                        li.textContent = userId;
+                        if (userId === currentMyId) {
+                            li.textContent += ' (You)';
+                            li.classList.add('you');
+                        }
+                        userListElement.appendChild(li);
+                    });
+                }
+            }
+        };
+
+        socket.onclose = (event) => {
+            console.log('Disconnected from WebSocket server.', event);
+            myIdElement.textContent = 'Disconnected';
+            statusElement.textContent = `Disconnected from server (code: ${event.code}, reason: ${event.reason || 'N/A'}). Try refreshing.`;
+            statusElement.className = 'status disconnected';
+            userListElement.innerHTML = '<li>Disconnected from server.</li>';
+            userCountElement.textContent = '0';
+        };
+
+        socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            myIdElement.textContent = 'Connection Error';
+            statusElement.textContent = 'Connection error. Ensure the WebSocket server is running on port 8080 and try refreshing.';
+            statusElement.className = 'status disconnected';
+            userListElement.innerHTML = '<li>Connection Error.</li>';
+            userCountElement.textContent = '0';
+        };
+    </script>
+</body>
+</html>
